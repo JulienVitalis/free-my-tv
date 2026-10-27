@@ -342,6 +342,21 @@ final class Shaders {
         out.set(NIGHT[0], NIGHT[1], NIGHT[2]);
     }
 
+    /** The screensaver's colors without photos: one of these, picked again each time it starts. */
+    private static final int[][] DREAMS = {
+        NIGHT, DUSK, SUNSET,
+        {0x061A1F, 0x0F5E63, 0x3FB8A9},   // lagoon
+        {0x0B1A10, 0x1F5C3A, 0x7DBE6B},   // forest
+        {0x1E0A14, 0x6E1F3F, 0xD8607A},   // wine
+        {0x1A0E05, 0x8A3B12, 0xF0A04B},   // amber
+        {0x0E0A24, 0x3B2C85, 0x58B6E8},   // indigo
+    };
+
+    static void dreamRandom(Palette out) {
+        int[] p = DREAMS[new java.util.Random().nextInt(DREAMS.length)];
+        out.set(p[0], p[1], p[2]);
+    }
+
     private static int mix(int a, int b, float f) {
         int r = Math.round(((a >> 16) & 255) * (1 - f) + ((b >> 16) & 255) * f);
         int g = Math.round(((a >> 8) & 255) * (1 - f) + ((b >> 8) & 255) * f);
