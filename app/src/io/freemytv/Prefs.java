@@ -181,6 +181,10 @@ final class Prefs {
     static boolean landscapeHome() { return sp().getBoolean("landscapeHome", true); }
     static void setLandscapeHome(boolean on) { put("landscapeHome", on); }
 
+    /** Free My TV's screensaver: famous paintings (Paintings), or the picks' photos. */
+    static boolean saverArt() { return sp().getBoolean("saverArt", true); }
+    static void setSaverArt(boolean on) { put("saverArt", on); }
+
     static boolean coin(int i) { return sp().getBoolean("coin" + i, true); }
     static void setCoin(int i, boolean on) { put("coin" + i, on); }
 

@@ -282,7 +282,12 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     /** Your photos when they are on, otherwise the picks'. */
     private List<Recs.Pick> photos() {
-        return Photos.on(getContext()) ? Photos.picks(getContext()) : recs.showcase();
+        if (Photos.on(getContext())) return Photos.picks(getContext());
+        if (Prefs.saverArt()) {
+            List<Recs.Pick> art = Paintings.picks(getContext());
+            if (!art.isEmpty()) return art;
+        }
+        return recs.showcase();
     }
 
     /** Loads the next photo in the background (one at a time); once ready, it comes in at the right moment. */
@@ -328,7 +333,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             float[] light = new float[2];
             try {
                 images = Backdrop.photo(file, PW, PH, light);
-                images[0] = Backdrop.gpu(withScrims(images[0], chosen.photo == null, light[0], light[1]));
+                images[0] = Backdrop.gpu(withScrims(images[0], chosen.photo == null || chosen.art, light[0], light[1]));
             } catch (Exception | OutOfMemoryError e) {
                 AppLog.w("screensaver: photo for “" + (chosen.photo != null ? chosen.photo.getName() : chosen.title) + "”: " + e.getMessage());
             }
@@ -732,7 +737,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private void recordCaption(Slide s) {
         Canvas c = s.caption.beginRecording(w, h);
         try {
-            if (s.pick.photo != null) return;   // your photos have no caption
+            if (s.pick.photo != null && !s.pick.art) return;   // your photos have no caption
             // With the hint, the caption moves up a line: the hint takes the meta's place, 72 px from the bottom edge.
             boolean hint = Prefs.saverWatch() && s.pick.pkg != null;
             float x = MARGIN * k, metaBase = (META_BASE - (hint ? 44 : 0)) * k, titleBase = metaBase - 58 * k;
@@ -742,7 +747,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
                     .setIncludePad(false).build();
             float originY = titleBase - t.getLineBaseline(t.getLineCount() - 1);
             float capTop = originY + t.getLineBaseline(0) - Ui.cap(titlePaint);
-            c.drawText(Recs.periodLabel(), x, capTop - 30 * k, labelPaint);
+            if (!s.pick.art) c.drawText(Recs.periodLabel(), x, capTop - 30 * k, labelPaint);
             c.save();
             c.translate(x - Ui.leftBearing(titlePaint, title), originY);
             t.draw(c);

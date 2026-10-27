@@ -716,10 +716,10 @@ public class SettingsActivity extends Activity {
         // MARK: - Home Settings and Remote Buttons
 
         private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
-        /** Home Settings: language, temperature, theme, my photos, home background, sounds, watch from the screensaver,
+        /** Home Settings: language, temperature, theme, my photos, home background, screensaver, sounds, watch from the screensaver,
          *  weather, city, forecast, now playing, quotes, one row per coin, then updates (the last row). */
-        private static final int PHOTOS_ROW = 3, BACKGROUND_ROW = 4, SOUNDS_ROW = 5, SAVER_ROW = 6, WEATHER_ROW = 7, CITY_ROW = 8,
-                FORECAST_ROW = 9, PLAYING_ROW = 10, QUOTES_ROW = 11, COIN_ROWS = 12;
+        private static final int PHOTOS_ROW = 3, BACKGROUND_ROW = 4, ART_ROW = 5, SOUNDS_ROW = 6, SAVER_ROW = 7, WEATHER_ROW = 8,
+                CITY_ROW = 9, FORECAST_ROW = 10, PLAYING_ROW = 11, QUOTES_ROW = 12, COIN_ROWS = 13;
         /** Home Settings rows on screen at once (what fits above the hints at 1080p); a longer list scrolls. */
         private static final int SETTINGS_VISIBLE = 10;
 
@@ -734,6 +734,7 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Theme"));
             l.add(Ui.tr("My Photos"));
             l.add(Ui.tr("Home background"));
+            l.add(Ui.tr("Screensaver"));
             l.add(Ui.tr("Navigation sounds"));
             l.add(Ui.tr("Watch from the screensaver"));
             l.add(Ui.tr("Weather widget"));
@@ -767,6 +768,8 @@ public class SettingsActivity extends Activity {
             v[PHOTOS_ROW] = photos == 0 ? Ui.tr("photos|None")
                     : Prefs.photos() ? Ui.plural("plural|one:{n} photo|other:{n} photos", photos) : Ui.tr("Off");
             v[BACKGROUND_ROW] = Prefs.landscapeHome() ? Ui.tr("Landscapes") : Ui.tr("Plain");
+            int art = Paintings.count(getContext());
+            v[ART_ROW] = Prefs.saverArt() ? Ui.tr("Paintings") + (art > 0 ? " · " + art : "") : Ui.tr("Movies");
             v[SOUNDS_ROW] = onOff(Prefs.sounds());
             v[SAVER_ROW] = onOff(Prefs.saverWatch());
             v[WEATHER_ROW] = onOff(Prefs.weather());
@@ -1042,6 +1045,7 @@ public class SettingsActivity extends Activity {
                     Prefs.setPhotos(!Prefs.photos());
                     return;
                 case BACKGROUND_ROW: Prefs.setLandscapeHome(!Prefs.landscapeHome()); break;
+                case ART_ROW: Prefs.setSaverArt(!Prefs.saverArt()); break;
                 case SOUNDS_ROW: Prefs.setSounds(!Prefs.sounds()); break;
                 case SAVER_ROW: Prefs.setSaverWatch(!Prefs.saverWatch()); break;
                 case WEATHER_ROW: Prefs.setWeather(!Prefs.weather()); break;

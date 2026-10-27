@@ -166,6 +166,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         TILE_STYLE.put("max", new int[] {0xFF5C30E8, 0xFF221684, 0});
         TILE_STYLE.put("appletv", new int[] {0xFF1C1C1E, 0xFF000000, 0});
     }
+    /** By day, the black tiles turn white (their logo's white parts dark), like the rest of the light design. */
+    private static final Map<String, int[]> DAY_STYLE = new HashMap<>();
+    static {
+        DAY_STYLE.put("netflix", new int[] {0xFFFFFFFF, 0xFFF2F2F7, 2});
+        DAY_STYLE.put("youtube", new int[] {0xFFFFFFFF, 0xFFF2F2F7, 2});
+        DAY_STYLE.put("appletv", new int[] {0xFFFFFFFF, 0xFFF2F2F7, 2});
+    }
+    private final Map<String, LinearGradient> dayShaders = new HashMap<>();
     private final android.graphics.PorterDuffColorFilter whiteLogo =
             new android.graphics.PorterDuffColorFilter(0xFFFFFFFF, android.graphics.PorterDuff.Mode.SRC_IN);
     private final RectF platterRect = new RectF();
@@ -439,6 +447,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         recs.addListener(this);
         data.refreshIfStale();
         recs.refreshIfStale();
+        if (Prefs.saverArt()) Paintings.refreshIfStale(getContext());   // ready before the screensaver comes
         Photos.importInbox(getContext(), ownReady);   // photos a computer just sent
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         handler.postDelayed(tick, 15_000);
@@ -1508,7 +1517,23 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         shadows.draw(c, tmp, r0, DEEP_BLUR * k, shadowDeep);
         c.restore();
         int[] style = TILE_STYLE.get(it.key);
-        if (it.logo != null && style != null) {
+        if (it.logo != null && dark() < 0.5f && DAY_STYLE.containsKey(it.key)) {
+            int[] day = DAY_STYLE.get(it.key);
+            if (it.logoDark == null) it.logoDark = inkOnLight(it.logo);
+            String key = it.key + "@" + bh;
+            LinearGradient g = dayShaders.get(key);
+            if (g == null) dayShaders.put(key, g = new LinearGradient(0, -bh / 2, 0, bh / 2, day[0], day[1], Shader.TileMode.CLAMP));
+            c.save();
+            c.translate(cx, cy);
+            c.scale(s, s);
+            tmp.set(-bw / 2, -bh / 2, bw / 2, bh / 2);
+            tileFill.setShader(g);
+            tileFill.setAlpha(255);
+            c.drawRoundRect(tmp, r0, r0, tileFill);
+            tileFill.setShader(null);
+            c.restore();
+            drawLogo(c, it, cell, s, day[2]);
+        } else if (it.logo != null && style != null) {
             if (tileShaders.length != shelf.size() || tileShaderH != bh) {
                 tileShaders = new LinearGradient[shelf.size()];
                 tileShaderH = bh;
@@ -1581,6 +1606,19 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         bitmapPaint.setColorFilter(mode == 1 ? whiteLogo : null);
         c.drawBitmap(logo, null, tmp, bitmapPaint);
         bitmapPaint.setColorFilter(null);
+    }
+
+    /** The logo for a white tile: its white and light gray parts (YouTube's word) in near-black, the colors kept. */
+    private static Bitmap inkOnLight(Bitmap logo) {
+        int w = logo.getWidth(), h = logo.getHeight();
+        int[] px = new int[w * h];
+        logo.getPixels(px, 0, w, 0, 0, w, h);
+        for (int i = 0; i < px.length; i++) {
+            int p = px[i], r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+            int max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
+            if (max - min < 40 && min > 150) px[i] = (p & 0xFF000000) | 0x1C1C1E;
+        }
+        return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888);
     }
 
     private Bitmap crispLogo(HomeApps.Item it, boolean dark, boolean rest) {
