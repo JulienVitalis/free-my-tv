@@ -43,11 +43,13 @@ import java.security.MessageDigest;
 final class Updates {
     private Updates() {}
 
-    private static final String LATEST = "https://api.github.com/repos/simbasjungles/free-my-tv/releases/latest";
+    // This fork's Philips build: the release "philips" (Philips build workflow), its version in the release's title.
+    private static final String LATEST = "https://api.github.com/repos/JulienVitalis/free-my-tv/releases/tags/philips";
     // The only place the APK may come from: this repository's releases (github.com redirects to its download host).
-    private static final String RELEASES = "https://github.com/simbasjungles/free-my-tv/releases/download/";
-    // The release key's certificate, as `apksigner verify --print-certs` shows it: only APKs signed with it come in.
-    private static final String RELEASE_CERT = "b85d4ff69cb42bfb1837ee0279506363954470b16402a4165f2f095886d19204";
+    private static final String RELEASES = "https://github.com/JulienVitalis/free-my-tv/releases/download/";
+    // The signing key's certificate (SHA-256), from config.properties' release_cert, which the Philips build workflow
+    // writes from the SIGNING_KEYSTORE secret: only APKs signed with it come in. Empty: no updates from here.
+    private static final String RELEASE_CERT = Config.RELEASE_CERT;
     private static final String ASSET = "FreeMyTV.apk";
     private static final long MAX_SIZE = 30L << 20;   // the APK is about 1.5 MB
     private static final long WEEK = 7 * 24 * 3600_000L;
@@ -63,9 +65,9 @@ final class Updates {
 
     private static Boolean releaseKey;   // this app is signed with the release key (read once per process)
 
-    /** The APK from the releases: built with --generic and signed with the project's key, so it can take the next. */
+    /** The APK from this fork's release (built with a fixed key, its certificate in RELEASE_CERT): it can take the next. */
     static boolean takesReleases(Context c) {
-        if (!Config.GENERIC) return false;
+        if (RELEASE_CERT.isEmpty()) return false;
         if (releaseKey == null) {
             boolean is;
             try {
@@ -195,6 +197,8 @@ final class Updates {
             set(c, CHECKING, "", "");
             JSONObject release = new JSONObject(get(LATEST));
             version = release.optString("tag_name").replaceFirst("^[vV]", "");
+            if (!version.matches("\\d.*")) version = release.optString("name").replaceFirst(".*\\s", "");   // "Free My TV 1.2.40"
+            if (!version.matches("\\d.*")) version = "";
             if (version.isEmpty()) throw new IOException("the latest release has no tag");
             String installed = installedVersion(c);
             AppLog.w("update: latest release " + version + ", installed " + installed);
