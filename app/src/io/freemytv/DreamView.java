@@ -40,10 +40,12 @@ import java.util.concurrent.Executors;
  * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV); with Watch
  * from the screensaver on (Prefs.saverWatch), OK first opens the title in its app, and the caption says so.
  * With your own photos on (Photos), those instead, without a caption.
+ * Paintings (Paintings) hang still like on a wall, two minutes each, with a small clock, the date and the weather in the
+ * corner (no glass, no prices) and a caption as small as its artist and year.
  * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
  */
 final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
-    private static final long SHOW_MS = 30_000, FADE_MS = 3_000, FIRST_MS = 1_600;
+    private static final long SHOW_MS = 30_000, ART_SHOW_MS = 120_000, FADE_MS = 3_000, FIRST_MS = 1_600;
     private static final float ZOOM = 0.1f;
     /** Photos 10% larger than the screen (the zoom goes up to 1.1 without upscaling). */
     private static final int PW = 2112, PH = 1188;
@@ -136,7 +138,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private long minute = -1;
     private String clock = "", date = "";
     private Paint datePaint, clockPaint, weatherPaint, weatherDim, quotePaint, stalePaint;
-    private Paint cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, metaPaint, hintPaint;
+    private Paint cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, metaPaint, hintPaint, artTitlePaint;
     private TextPaint titlePaint;
 
     private final Runnable tick = new Runnable() {
@@ -266,9 +268,11 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         metaPaint = Ui.text(Ui.medium, 29 * k, 0xC7FFFFFF);
         hintPaint = Ui.text(Ui.regular, 24 * k, 0x99FFFFFF);
         metaPaint.setLetterSpacing(0.014f);
+        artTitlePaint = Ui.text(Ui.semibold, 29 * k, 0xF2FFFFFF);
+        artTitlePaint.setLetterSpacing(0.014f);
         Symbols.warmWeather(getContext(), 30 * k);   // the corner's
         Symbols.warmWeather(getContext(), 32 * k);   // under the clock
-        for (Paint p : new Paint[] {cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, titlePaint, metaPaint, barPaint}) {
+        for (Paint p : new Paint[] {cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, titlePaint, metaPaint, artTitlePaint, barPaint}) {
             p.setShadowLayer(18 * k, 0, 2 * k, 0x66000000);
         }
         fitPlaying();
@@ -332,7 +336,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             Bitmap[] images = null;
             float[] light = new float[2];
             try {
-                images = Backdrop.photo(file, PW, PH, light);
+                // Paintings don't move: the screen's size is enough.
+                images = chosen.art ? Backdrop.photo(file, 1920, 1080, light) : Backdrop.photo(file, PW, PH, light);
                 images[0] = Backdrop.gpu(withScrims(images[0], chosen.photo == null || chosen.art, light[0], light[1]));
             } catch (Exception | OutOfMemoryError e) {
                 AppLog.w("screensaver: photo for “" + (chosen.photo != null ? chosen.photo.getName() : chosen.title) + "”: " + e.getMessage());
@@ -374,7 +379,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             prepareNext();
             return;
         }
-        if (incoming == null && prepared != null && up >= current.startedAt + SHOW_MS) {
+        if (incoming == null && prepared != null && up >= current.startedAt + (current.pick.art ? ART_SHOW_MS : SHOW_MS)) {
             incoming = prepared;
             prepared = null;
             incoming.startedAt = up;
@@ -407,6 +412,11 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     /** Photo position and scale now: zoom from 1 to 1.1 (or back) and a pan toward a corner, never showing an edge. */
     private void place(Slide s, long up, float[] out) {
+        if (s.pick.art) {   // a painting stays still, the whole screen
+            out[0] = out[1] = 0;
+            out[2] = (float) w / s.image.getWidth();
+            return;
+        }
         float u = Ui.clamp((up - s.startedAt) / (float) (SHOW_MS + FADE_MS));
         float f = s.zoomIn ? u : 1 - u;
         float z = 1 + ZOOM * f;
@@ -480,7 +490,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             float x = RIGHT * k - playingCornerWidth - cornerCap * 0.6f - NowPlaying.barsWidth(cornerCap);
             drawBars(canvas, x, cornerBase, cornerCap, cornerQuote.getColor(), first);
         }
-        drawGlass(canvas, first, e);
+        if (!artCorner()) drawGlass(canvas, first, e);
         drawCaptions(canvas, up);
     }
 
@@ -559,9 +569,19 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     // MARK: - Corner: date and weather, glass clock, prices
 
+    /** Paintings: the small corner (clock, then date and weather), without the glass clock or the prices. */
+    private boolean artCorner() {
+        return current != null && current.pick.art;
+    }
+
     private void recordChrome() {
         Canvas c = chrome.beginRecording(w, h);
         try {
+            if (artCorner()) {
+                recordArtCorner(c);
+                chromeDirty = false;
+                return;
+            }
             float right = RIGHT * k;
             float x = right;
             HomeData.Weather wx = data.weather;
@@ -615,6 +635,26 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             chrome.endRecording();
         }
         chromeDirty = false;
+    }
+
+    private void recordArtCorner(Canvas c) {
+        float right = RIGHT * k, line = 44 * k, top = DATE_BASE * k;
+        c.drawText(clock, right - cornerDate.measureText(clock), top, cornerDate);
+        float x = right, base = top + line;
+        HomeData.Weather wx = data.weather;
+        if (!Double.isNaN(wx.temp) && Prefs.weather()) {
+            String temp = HomeData.degrees(wx.temp);
+            float tw = metaPaint.measureText(temp);
+            c.drawText(temp, x - tw, base, metaPaint);
+            x -= tw + 10 * k;
+            String symbol = Symbols.weather(wx.code, wx.isDay);
+            float size = 30 * k, sw = Symbols.width(getContext(), symbol, size);
+            Symbols.draw(getContext(), c, symbol, x - sw / 2, base - Ui.halfCap(metaPaint), size, metaPaint.getColor());
+            x -= sw + 26 * k;
+        }
+        c.drawText(date, x - metaPaint.measureText(date), base, metaPaint);
+        cornerBase = base + line;
+        if (playingCorner != null) c.drawText(playingCorner, right - playingCornerWidth, cornerBase, cornerQuote);
     }
 
     private void drawGlass(Canvas c, float alpha, float e) {
@@ -738,6 +778,14 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         Canvas c = s.caption.beginRecording(w, h);
         try {
             if (s.pick.photo != null && !s.pick.art) return;   // your photos have no caption
+            if (s.pick.art) {   // like a museum label: the title as small as the artist and year under it
+                float x = MARGIN * k, metaBase = META_BASE * k;
+                String title = TextUtils.ellipsize(s.pick.title == null ? "" : s.pick.title, new TextPaint(artTitlePaint),
+                        TITLE_W * k, TextUtils.TruncateAt.END).toString();
+                c.drawText(title, x, metaBase - 42 * k, artTitlePaint);
+                if (s.pick.meta != null && !s.pick.meta.isEmpty()) c.drawText(s.pick.meta, x, metaBase, metaPaint);
+                return;
+            }
             // With the hint, the caption moves up a line: the hint takes the meta's place, 72 px from the bottom edge.
             boolean hint = Prefs.saverWatch() && s.pick.pkg != null;
             float x = MARGIN * k, metaBase = (META_BASE - (hint ? 44 : 0)) * k, titleBase = metaBase - 58 * k;

@@ -1613,10 +1613,31 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         int w = logo.getWidth(), h = logo.getHeight();
         int[] px = new int[w * h];
         logo.getPixels(px, 0, w, 0, 0, w, h);
+        // Only the white reached from the edges through the transparent background: what sits inside a colour (the
+        // play triangle in YouTube's red box) stays white.
+        boolean[] seen = new boolean[px.length];
+        int[] queue = new int[px.length];
+        int head = 0, tail = 0;
         for (int i = 0; i < px.length; i++) {
-            int p = px[i], r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+            int x = i % w, y = i / w;
+            if (x == 0 || y == 0 || x == w - 1 || y == h - 1) {
+                seen[i] = true;
+                queue[tail++] = i;
+            }
+        }
+        while (head < tail) {
+            int i = queue[head++], p = px[i], r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
             int max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
             if (max - min < 40 && min > 150) px[i] = (p & 0xFF000000) | 0x1C1C1E;
+            else if ((p >>> 24) >= 32) continue;   // a colour: the edge of a shape
+            int x = i % w;
+            int[] next = {x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w};
+            for (int n : next) {
+                if (n >= 0 && n < px.length && !seen[n]) {
+                    seen[n] = true;
+                    queue[tail++] = n;
+                }
+            }
         }
         return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888);
     }
