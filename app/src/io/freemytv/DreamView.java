@@ -40,12 +40,12 @@ import java.util.concurrent.Executors;
  * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV); with Watch
  * from the screensaver on (Prefs.saverWatch), OK first opens the title in its app, and the caption says so.
  * With your own photos on (Photos), those instead, without a caption.
- * Paintings (Paintings) hang still like on a wall, two minutes each, with a small clock, the date and the weather in the
+ * Paintings (Paintings) hang still like on a wall, 45 s each, with a small clock, the date and the weather in the
  * corner (no glass, no prices) and a caption as small as its artist and year.
  * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
  */
 final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
-    private static final long SHOW_MS = 30_000, ART_SHOW_MS = 120_000, FADE_MS = 3_000, FIRST_MS = 1_600;
+    private static final long SHOW_MS = 30_000, ART_SHOW_MS = 45_000, FADE_MS = 3_000, FIRST_MS = 1_600;
     private static final float ZOOM = 0.1f;
     /** Photos 10% larger than the screen (the zoom goes up to 1.1 without upscaling). */
     private static final int PW = 2112, PH = 1188;
