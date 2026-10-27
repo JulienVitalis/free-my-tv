@@ -40,7 +40,11 @@ jobs:
           cp config.philips.properties config.properties
           [ -n "$TMDB_KEY" ] && printf '\ntmdb_key=%s\n' "$TMDB_KEY" >> config.properties || echo "No TMDB_KEY secret: no picks"
           if [ -n "$SIGNING_KEYSTORE" ]; then
-            printf '%s' "$SIGNING_KEYSTORE" | base64 -d > freemytv.keystore
+            # A secret pasted in part (or with the terminal's prompt) decodes to a broken keystore: said plainly.
+            printf '%s' "$SIGNING_KEYSTORE" | tr -d ' \r\n' | base64 -d > freemytv.keystore 2>/dev/null \
+              || { echo "::error::SIGNING_KEYSTORE isn't valid base64 (copied in part?)"; exit 1; }
+            keytool -list -keystore freemytv.keystore -alias freemytv -storepass freemytv > /dev/null 2>&1 \
+              || { echo "::error::SIGNING_KEYSTORE decodes ($(wc -c < freemytv.keystore) bytes) but isn't a keystore with the alias freemytv and the password freemytv (copied in part?)"; exit 1; }
             cert="$(keytool -exportcert -keystore freemytv.keystore -alias freemytv -storepass freemytv | sha256sum | cut -d' ' -f1)"
             printf '\nrelease_cert=%s\n' "$cert" >> config.properties
           else
@@ -51,7 +55,11 @@ jobs:
           echo "VERSION=1.2.${{ github.run_number }}" >> "$GITHUB_ENV"
           sed -i -e 's/android:versionCode="[0-9]*"/android:versionCode="'$((1000 + ${{ github.run_number }}))'"/' \
                  -e 's/android:versionName="[^"]*"/android:versionName="1.2.${{ github.run_number }}"/' app/AndroidManifest.xml
-      - run: ./build.sh
+      - name: Build
+        run: |
+          # The last lines of a failed build also go into an annotation, readable without the log.
+          set -o pipefail
+          ./build.sh 2>&1 | tee build.log || { echo "::error::$(tail -5 build.log | tr '\n' ' ')"; exit 1; }
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
