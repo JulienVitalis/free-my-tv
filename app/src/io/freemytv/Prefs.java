@@ -177,6 +177,10 @@ final class Prefs {
     static boolean photos() { return sp().getBoolean("photos", true); }
     static void setPhotos(boolean on) { put("photos", on); }
 
+    /** Bing's landscapes (Landscapes) behind the home screen when there are no picks, instead of the plain sky. */
+    static boolean landscapeHome() { return sp().getBoolean("landscapeHome", true); }
+    static void setLandscapeHome(boolean on) { put("landscapeHome", on); }
+
     static boolean coin(int i) { return sp().getBoolean("coin" + i, true); }
     static void setCoin(int i, boolean on) { put("coin" + i, on); }
 

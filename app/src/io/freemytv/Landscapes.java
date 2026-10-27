@@ -1,6 +1,10 @@
 package io.freemytv;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.os.Handler;
+import android.os.Looper;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -22,9 +26,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Landscapes for the screensaver, unless your own photos are on: Bing's photos of the day (mostly landscapes, no key,
- * no account). The newest KEEP are kept in the app's own folder, a new one comes each day, and the
- * screensaver shows them in an order shuffled again every time it starts.
+ * Landscapes behind the home screen (Home Settings > Home background), when there are neither picks nor your own
+ * photos: Bing's photos of the day (mostly landscapes, no key, no account). The newest KEEP are kept in the app's own
+ * folder, a new one comes each day, and the background changes every hour to one picked at random among them.
  */
 final class Landscapes {
     private Landscapes() {}
@@ -37,7 +41,6 @@ final class Landscapes {
     private static final ExecutorService worker = Executors.newSingleThreadExecutor();
     private static long checkedAt;
     private static boolean fetching;
-    private static long seed = new Random().nextLong();
 
     private static File dir(Context c) {
         return new File(c.getFilesDir(), "landscapes");
@@ -51,23 +54,40 @@ final class Landscapes {
         return list;
     }
 
-    /** A new order for the next screensaver. */
-    static void shuffle() {
-        seed = new Random().nextLong();
-    }
+    private static final Handler main = new Handler(Looper.getMainLooper());
+    private static File built, building;
+    private static Backdrop backdrop;
 
-    /** For the screensaver: the landscapes as picks (no title, no caption), in this session's order. */
-    static List<Recs.Pick> picks(Context c) {
-        List<Recs.Pick> out = new ArrayList<>();
-        for (File f : files(c)) {
-            Recs.Pick p = new Recs.Pick();
-            p.kind = "landscape";
-            p.id = Integer.parseInt(f.getName().substring(0, 8));
-            p.photo = f;
-            out.add(p);
+    /**
+     * This hour's landscape, ready to draw as the home screen's background, or null (none downloaded yet, or still being
+     * built). The previous one stays until the new one is ready; then `ready` runs. Also fetches new ones when due.
+     */
+    static synchronized Backdrop backdrop(Context c, Runnable ready) {
+        refreshIfStale(c, () -> main.post(ready));
+        List<File> list = files(c);
+        if (list.isEmpty()) return backdrop;
+        long hour = System.currentTimeMillis() / 3_600_000L;
+        File want = list.get(new Random(hour * 0x9E3779B97F4A7C15L).nextInt(list.size()));
+        if (!want.equals(built) && !want.equals(building)) {
+            building = want;
+            worker.execute(() -> {
+                Backdrop b = null;
+                try {
+                    Bitmap src = BitmapFactory.decodeFile(want.getPath());
+                    if (src != null) b = Backdrop.make(src, true, true);
+                } catch (RuntimeException | OutOfMemoryError e) {
+                    AppLog.w("landscapes: background from " + want.getName() + ": " + e.getMessage());
+                }
+                synchronized (Landscapes.class) {
+                    building = null;
+                    if (b == null) return;
+                    backdrop = b;
+                    built = want;
+                }
+                main.post(ready);
+            });
         }
-        Collections.shuffle(out, new Random(seed));
-        return out;
+        return backdrop;
     }
 
     /** Fetches the new ones in the background, at most every few hours; `done` runs on that thread if any came. */

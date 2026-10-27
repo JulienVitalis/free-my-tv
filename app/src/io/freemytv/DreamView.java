@@ -39,8 +39,8 @@ import java.util.concurrent.Executors;
  *  - bottom left, the photo's caption: the time-of-day label ("TONIGHT"), the title, and genre · runtime · service.
  * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV); with Watch
  * from the screensaver on (Prefs.saverWatch), OK first opens the title in its app, and the caption says so.
- * With your own photos on (Photos), those instead, without a caption; otherwise Bing's landscapes (Landscapes), if any.
- * Without photos (offline, no TMDB key): the big clock over the aurora, in colors picked at random each time.
+ * With your own photos on (Photos), those instead, without a caption.
+ * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
  */
 final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
     private static final long SHOW_MS = 30_000, FADE_MS = 3_000, FIRST_MS = 1_600;
@@ -183,10 +183,6 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         startedAt = clock();
         lastFrame = 0;
         failed.clear();
-        Shaders.dreamRandom(scene.palette);
-        scene.applyPalette();
-        Landscapes.shuffle();
-        Landscapes.refreshIfStale(getContext(), () -> handler.post(() -> { if (running) prepareNext(); }));
         fallback = photos().isEmpty();
         data.addListener(this);
         recs.addListener(this);
@@ -284,11 +280,9 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     // MARK: - Photos
 
-    /** Your photos when they are on, otherwise the landscapes, otherwise the picks'. */
+    /** Your photos when they are on, otherwise the picks'. */
     private List<Recs.Pick> photos() {
-        if (Photos.on(getContext())) return Photos.picks(getContext());
-        List<Recs.Pick> landscapes = Landscapes.picks(getContext());
-        return landscapes.isEmpty() ? recs.showcase() : landscapes;
+        return Photos.on(getContext()) ? Photos.picks(getContext()) : recs.showcase();
     }
 
     /** Loads the next photo in the background (one at a time); once ready, it comes in at the right moment. */
