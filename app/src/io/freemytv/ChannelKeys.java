@@ -71,18 +71,27 @@ final class ChannelKeys {
     /** True if the key is a channel digit we took (it then reaches no app). */
     static boolean onKey(Context c, KeyEvent e) {
         if (!philips(c)) return false;
-        int code = e.getKeyCode();
-        if (code < KeyEvent.KEYCODE_0 || code > KeyEvent.KEYCODE_9) return false;
+        int digit = digit(e.getKeyCode());
+        if (digit < 0) return false;
+        // Not known yet (no window has changed since the service started): taken too, live TV gets the digits anyway.
         String front = foreground;
-        if (front.isEmpty() || LIVE_TV.contains(front) || LEFT_ALONE.contains(front) || front.equals(liveTvPkg(c))) return false;
+        if (LIVE_TV.contains(front) || LEFT_ALONE.contains(front) || front.equals(liveTvPkg(c))) return false;
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
             synchronized (digits) {
-                if (digits.length() < 4) digits.append((char) ('0' + code - KeyEvent.KEYCODE_0));
+                if (digits.length() < 4) digits.append((char) ('0' + digit));
+                android.widget.Toast.makeText(c.getApplicationContext(), "\uD83D\uDCFA " + digits, android.widget.Toast.LENGTH_SHORT).show();
             }
             MAIN.removeCallbacksAndMessages(null);
             MAIN.postDelayed(() -> tune(c.getApplicationContext()), NEXT_DIGIT_MS);
         }
         return true;
+    }
+
+    /** 0 to 9 for the remote's number keys (some remotes send the keypad's), else -1. */
+    private static int digit(int code) {
+        if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) return code - KeyEvent.KEYCODE_0;
+        if (code >= KeyEvent.KEYCODE_NUMPAD_0 && code <= KeyEvent.KEYCODE_NUMPAD_9) return code - KeyEvent.KEYCODE_NUMPAD_0;
+        return -1;
     }
 
     private static void tune(Context c) {
