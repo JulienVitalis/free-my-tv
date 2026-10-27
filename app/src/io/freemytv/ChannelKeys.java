@@ -22,9 +22,29 @@ import java.util.Set;
 final class ChannelKeys {
     private ChannelKeys() {}
 
-    /** Philips TVs are made by TP Vision: Build.MANUFACTURER can be either. */
-    static final boolean PHILIPS = "Philips".equalsIgnoreCase(Build.BRAND) || "Philips".equalsIgnoreCase(Build.MANUFACTURER)
-            || "TPV".equalsIgnoreCase(Build.MANUFACTURER) || "TP Vision".equalsIgnoreCase(Build.MANUFACTURER);
+    /**
+     * Philips TVs are made by TP Vision, and the build names vary (Philips, TPV, TP Vision, TPVision...), so the TV's own
+     * Philips pieces (Ambilight, Watch TV) decide too. Looked up once.
+     */
+    private static Boolean philips;
+
+    static boolean philips(Context c) {
+        if (philips == null) {
+            String names = (Build.BRAND + " " + Build.MANUFACTURER + " " + Build.FINGERPRINT).toLowerCase(java.util.Locale.ROOT);
+            philips = names.contains("philips") || names.contains("tpv") || names.contains("tp vision")
+                    || installed(c, "org.droidtv.ambisvc") || installed(c, "org.droidtv.playtv");
+        }
+        return philips;
+    }
+
+    private static boolean installed(Context c, String pkg) {
+        try {
+            c.getPackageManager().getApplicationInfo(pkg, 0);
+            return true;
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
 
     /** Philips' live TV apps (Watch TV, MediaTek TV Center): the digits are theirs. */
     private static final Set<String> LIVE_TV = new HashSet<>(Arrays.asList(
@@ -50,7 +70,7 @@ final class ChannelKeys {
 
     /** True if the key is a channel digit we took (it then reaches no app). */
     static boolean onKey(Context c, KeyEvent e) {
-        if (!PHILIPS) return false;
+        if (!philips(c)) return false;
         int code = e.getKeyCode();
         if (code < KeyEvent.KEYCODE_0 || code > KeyEvent.KEYCODE_9) return false;
         String front = foreground;
