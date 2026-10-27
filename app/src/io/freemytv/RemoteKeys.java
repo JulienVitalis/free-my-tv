@@ -56,6 +56,11 @@ final class RemoteKeys {
         return TCL || STEM_NETFLIX || KTC || SONY || XIAOMI || HISENSE;
     }
 
+    /** The key filter is needed for the app buttons above, or for the channel digits on Philips (ChannelKeys). */
+    static boolean serviceNeeded() {
+        return supported() || ChannelKeys.PHILIPS;
+    }
+
     private static boolean is(String maker) {
         return maker.equalsIgnoreCase(Build.MANUFACTURER) || maker.equalsIgnoreCase(Build.BRAND);
     }
