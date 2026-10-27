@@ -84,6 +84,7 @@ final class Config {
     static final boolean HIDE_ANIMATION = $ANIMATION;
     static final boolean SCREENSAVER = $SAVER;   // false: the TV keeps its own
     static final boolean GENERIC = $GENERIC;   // built with --generic, as the APK on GitHub's releases (Updates)
+    static final String RELEASE_CERT = "$(prop release_cert '')";   // the release key's certificate (Updates)
 }
 EOF
 
