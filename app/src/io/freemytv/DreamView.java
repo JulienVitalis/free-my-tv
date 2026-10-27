@@ -579,6 +579,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         try {
             if (artCorner()) {
                 recordArtCorner(c);
+                chromeDirty = false;
                 return;
             }
             float right = RIGHT * k;
