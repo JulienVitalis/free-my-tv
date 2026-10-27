@@ -147,7 +147,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Spring[] cardFocus = new Spring[3];
     private final RectF[] cardRects = new RectF[3];
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
-    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote;
+    private Paint lTopClock, lTopInfo, lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote;
     private Shader lightGradient;
 
     // Shelf
@@ -626,6 +626,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (Paint p : new Paint[] {labelPaint, titlePaint, metaPaint, clockPaint}) p.setShadowLayer(22 * k, 0, 2 * k, 0x59000000);
         lTitle = Ui.text(Ui.displaySemibold, 76 * k, L_INK);
         lTitle.setLetterSpacing(0.004f);
+        lTopClock = Ui.numbers(Ui.semibold, 50 * k, L_INK);
+        lTopInfo = Ui.text(Ui.medium, 30 * k, L_DIM);
         lTab = Ui.text(Ui.medium, 30 * k, L_DIM);
         lTabOn = Ui.text(Ui.semibold, 30 * k, L_INK);
         lCardTitle = Ui.text(Ui.semibold, 31 * k, L_INK);
@@ -731,7 +733,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 refreshHero(false);
                 heroLayer.invalidate();
             }
-            if (!picksOn()) heroLayer.invalidate();
+            heroLayer.invalidate();   // the big clock, or the time at the top with the picks
         }
 
         // Busy: something is moving, or the sheet or the drawer is open.
@@ -1034,6 +1036,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Text colors for the current night value (dark by day, white at night). */
     private void applyTone() {
         lTitle.setColor(tone(L_INK, WHITE));
+        lTopClock.setColor(tone(L_INK, WHITE));
+        lTopInfo.setColor(tone(L_DIM, 0xFF98989D));
         lTab.setColor(tone(L_DIM, 0xFF8E8E93));
         lTabOn.setColor(tone(L_INK, WHITE));
         lCardTitle.setColor(tone(L_INK, WHITE));
@@ -2430,6 +2434,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Recs.Pick p = currentPick();
             if (p == null || p.pkg == null) return;
             it = HomeApps.app(p.pkg, Recs.serviceName(p), p.link);
+            recs.opened(p);
             r = heroButton;
         } else if (zone == Z_STATUS) {
             if (statusItems.isEmpty()) return;
@@ -2450,6 +2455,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Recs.Pick p = cardIndex < cards.size() ? cards.get(cardIndex) : null;
             if (p == null || p.pkg == null) return;
             it = HomeApps.app(p.pkg, Recs.serviceName(p), p.link);
+            recs.opened(p);
             r = cardRects[cardIndex];
         } else {
             if (shelf.isEmpty()) return;
@@ -3059,6 +3065,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         String hello = Ui.tr("For You");
         c.drawText(hello, MARGIN * k - Ui.leftBearing(lTitle, hello), L_TITLE_BASE * k, lTitle);
+        drawTopInfo(c);
         // Text tabs (the selected one in bold, in the main text color); with focus on the tabs, the selected one gets
         // the white pill with a shadow and grows a little (the tvOS focus).
         float focus = Ui.clamp(topFocus[tab].value);
@@ -3088,6 +3095,33 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < 3; i++) if (i != top) drawLightCard(c, i);
         if (top >= 0) drawLightCard(c, top);
         if (HomeData.coinCount() > 0 || playingTab != null) drawQuotes(c);
+    }
+
+    /**
+     * With the picks, the big clock gives way to them: the time, the date and the weather in a row at the top right,
+     * left of the round buttons (and of the sleep timer).
+     */
+    private void drawTopInfo(Canvas c) {
+        float right = (lightButtons.isEmpty() ? CONTENT_R * k : topRects[3].left) - 32 * k;
+        if (!sleepText.isEmpty()) right -= lQuote.measureText(sleepText) + lQuote.getTextSize() * 1.6f + 32 * k;
+        float base = L_BUTTON_CY * k + Ui.halfCap(lTopClock), gap = 30 * k;
+        HomeData.Weather wx = data.weather;
+        boolean weather = Prefs.weather() && !Double.isNaN(wx.temp);
+        String degrees = weather ? HomeData.degrees(wx.temp) : "";
+        String symbol = weather ? Symbols.weather(wx.code, wx.isDay) : null;
+        float size = 34 * k, sw = weather ? Symbols.width(getContext(), symbol, size) : 0;
+        float x = right;
+        if (weather) {
+            x -= lTopInfo.measureText(degrees);
+            c.drawText(degrees, x, base, lTopInfo);
+            x -= 10 * k + sw;
+            Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(lTopInfo), size, lTopInfo.getColor());
+            x -= gap;
+        }
+        x -= lTopInfo.measureText(dateText);
+        c.drawText(dateText, x, base, lTopInfo);
+        x -= gap + lTopClock.measureText(clockText);
+        c.drawText(clockText, x, base, lTopClock);
     }
 
     private boolean picksOn() {

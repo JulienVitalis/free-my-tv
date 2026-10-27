@@ -554,7 +554,9 @@ final class HomeApps {
                 intent = launchIntent(a.getPackageManager(), it.pkg);
                 plain = intent;
                 if (plain != null) plain.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-                if (intent != null && it.uri != null) {
+                if (intent != null && it.uri != null && it.uri.startsWith("intent:")) {
+                    intent = resumeIntent(it.uri, it.pkg, intent);
+                } else if (intent != null && it.uri != null) {
                     intent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(it.uri)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(it.pkg);
                 }
                 break;
@@ -593,6 +595,21 @@ final class HomeApps {
             } catch (ActivityNotFoundException | SecurityException e2) {
                 return false;
             }
+        }
+    }
+
+    /**
+     * The address a streaming app gave Android's Play Next row ("intent:…#Intent;…;end"), kept to that app: it resumes
+     * the episode where you stopped. If it can't be read, or points at another app, the app's own home.
+     */
+    private static Intent resumeIntent(String uri, String pkg, Intent home) {
+        try {
+            Intent in = Intent.parseUri(uri, Intent.URI_INTENT_SCHEME);
+            in.setSelector(null);
+            if (in.getComponent() != null && !pkg.equals(in.getComponent().getPackageName())) return home;
+            return in.setPackage(pkg);
+        } catch (java.net.URISyntaxException e) {
+            return home;
         }
     }
 

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.tv.TvContract;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.os.Handler;
@@ -50,6 +51,7 @@ final class Recs {
         String title, backdrop, meta = "", app, pkg;
         String link;            // opens the title in its app (looked up with Watchmode), or null: the app's home
         boolean detailed;
+        long resumeAt;          // a title you were watching ("Continue watching"): when, else 0
         java.io.File photo;     // one of your own photos (Photos): no title, no caption
     }
 
@@ -161,6 +163,12 @@ final class Recs {
     private volatile boolean light;     // light design: builds only the cards (all three tabs' cards fit in memory)
     private volatile long failedAt, keyStamp, linkRetryAt;
     private volatile String listLanguage = "";   // language used for the saved titles, genres and texts
+    /** What you were watching (Play Next, or the last pick you opened): first among the picks, for RESUME_DAYS. */
+    private volatile Pick resume;
+    private volatile long resumeCheckedAt;
+    private static final int RESUME_DAYS = 14;
+    private static final long RESUME_EVERY = 10 * 60_000L;
+    private final ExecutorService resumeIo = Executors.newSingleThreadExecutor();
 
     private Recs(Context c) {
         context = c;
@@ -173,6 +181,11 @@ final class Recs {
             listAt = cache.getLong("listAt", 0);
             listLanguage = cache.getString("language", cache.getBoolean("english", false) ? "en" : "pt");
             keyStamp = cache.getLong("keyStamp", 0);
+            String r = cache.getString("resume", null);
+            if (r != null) {
+                List<Pick> one = parse(new JSONArray(r));
+                if (!one.isEmpty()) resume = one.get(0);
+            }
         } catch (Exception ignored) {
         }
         // Right after the TV starts, the first fetch runs before the Wi-Fi is up and fails, which would hold the old
@@ -249,16 +262,126 @@ final class Recs {
             if ((kind == null || kind.equals(p.kind))
                     && (!p.detailed || (p.pkg != null && have.computeIfAbsent(p.pkg, this::installed)))) list.add(p);   // app missing: skip
         }
-        if (list.isEmpty()) return list;
         long hour = System.currentTimeMillis() / 3600_000L;
         // Three per hour, never two from the same franchise ("Law & Order" and "Law & Order: Special…").
         List<Pick> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
+        Pick r = resume(kind);
+        if (r != null) {
+            out.add(r);
+            seen.add(franchise(r.title));
+        }
         for (int i = 0; i < list.size() && out.size() < 3; i++) {
             Pick p = list.get((int) ((hour * 3 + i) % list.size()));
             if (seen.add(franchise(p.title))) out.add(p);
         }
         return out;
+    }
+
+    /** What you were watching, if it fits the tab and its app is still on the TV; else null. */
+    private Pick resume(String kind) {
+        Pick r = resume;
+        if (r == null || r.pkg == null || (kind != null && !kind.equals(r.kind)) || !installed(r.pkg)) return null;
+        long age = System.currentTimeMillis() - r.resumeAt;
+        return age >= 0 && age < RESUME_DAYS * 86_400_000L ? r : null;
+    }
+
+    /** A pick was opened from the home screen: it comes back first, as "Continue watching", until something newer. */
+    void opened(Pick p) {
+        if (p == null || p.pkg == null || p.photo != null) return;
+        Pick r = copy(p);
+        if (!p.meta.startsWith(resumeLabel())) r.meta = resumeLabel() + (p.meta.isEmpty() ? "" : " · " + p.meta);
+        r.resumeAt = System.currentTimeMillis();
+        setResume(r);
+    }
+
+    private static String resumeLabel() {
+        return Ui.tr("Continue watching");
+    }
+
+    private void setResume(Pick r) {
+        resume = r;
+        try {
+            cache.edit().putString("resume", toJson(java.util.Collections.singletonList(r)).toString()).apply();
+        } catch (Exception ignored) {
+        }
+        notifyListeners();
+    }
+
+    private static Pick copy(Pick p) {
+        Pick r = new Pick();
+        r.id = p.id;
+        r.kind = p.kind;
+        r.title = p.title;
+        r.backdrop = p.backdrop;
+        r.meta = p.meta == null ? "" : p.meta;
+        r.app = p.app;
+        r.pkg = p.pkg;
+        r.link = p.link;
+        r.detailed = p.detailed;
+        r.resumeAt = p.resumeAt;
+        return r;
+    }
+
+    /**
+     * Every few minutes while the home screen shows: the newest entry of Android's Play Next row (Watch Next) among the
+     * TV's streaming apps, looked up on TMDB for its photo. It wins over the last opened pick when it's newer.
+     */
+    private void refreshResume() {
+        long now = System.currentTimeMillis();
+        if (now - resumeCheckedAt < RESUME_EVERY && now >= resumeCheckedAt) return;
+        resumeCheckedAt = now;
+        resumeIo.execute(() -> {
+            try {
+                Set<String> pkgs = new HashSet<>();
+                for (String[] s : SERVICES) if (installed(s[2])) pkgs.add(s[2]);
+                if (pkgs.isEmpty()) return;
+                List<WatchNext.Entry> entries = WatchNext.read(context, pkgs);
+                if (entries.isEmpty()) return;
+                WatchNext.Entry e = entries.get(0);
+                Pick old = resume;
+                if (old != null && old.resumeAt >= e.at) return;   // you opened something since
+                Pick r = old != null && e.pkg.equals(old.pkg) && e.title.equalsIgnoreCase(old.title) ? copy(old) : find(e);
+                if (r == null) return;
+                r.pkg = e.pkg;
+                r.app = appFor(e.pkg);
+                r.link = e.intent.isEmpty() ? r.link : e.intent;
+                List<String> parts = new ArrayList<>();
+                parts.add(resumeLabel());
+                if (e.season > 0 && e.episode > 0) parts.add(Ui.trf("S{s} E{e}", "s", e.season, "e", e.episode));
+                if (r.app != null) parts.add(SERVICE_NAME.get(r.app));
+                r.meta = String.join(" · ", parts);
+                r.resumeAt = e.at > 0 ? e.at : System.currentTimeMillis();
+                r.detailed = true;
+                setResume(r);
+                AppLog.w("continue watching: \u201c" + r.title + "\u201d (" + r.app + ")");
+            } catch (Exception ex) {
+                AppLog.w("continue watching: " + ex.getMessage());
+            }
+        });
+    }
+
+    /** The Play Next title on TMDB (movie or show, by the entry's type), with its photo; or null. */
+    private Pick find(WatchNext.Entry e) throws Exception {
+        String kind = e.type == TvContract.PreviewPrograms.TYPE_MOVIE ? "movie"
+                : e.type >= TvContract.PreviewPrograms.TYPE_TV_SERIES && e.type <= TvContract.PreviewPrograms.TYPE_TV_EPISODE ? "tv" : null;
+        if (kind == null) return null;   // clips, tracks, channels...
+        JSONArray results = get("/search/" + kind + "?language=" + lang() + "&include_adult=false&query="
+                + URLEncoder.encode(e.title, "UTF-8")).optJSONArray("results");
+        List<Pick> found = new ArrayList<>();
+        for (int i = 0; results != null && i < results.length() && found.isEmpty(); i++) add(found, results.getJSONObject(i), kind);
+        if (found.isEmpty()) return null;
+        Pick p = found.get(0);
+        try {
+            fetchDetails(p);
+        } catch (Exception ignored) {   // the photo from the search is enough
+        }
+        return p;
+    }
+
+    private String appFor(String pkg) {
+        for (String[] s : SERVICES) if (s[2].equals(pkg)) return s[1];
+        return null;
     }
 
     /** "Law & Order: Special Victims Unit" → "law & order" (what comes before ":" or " - "). */
@@ -303,6 +426,7 @@ final class Recs {
 
     /** With a key: fetches the list if stale or the time of day (morning/afternoon/night) changed; then the details. */
     void refreshIfStale() {
+        if (hasKey(context)) refreshResume();
         if (!hasKey(context) || fetching) return;
         long now = System.currentTimeMillis();
         long stamp = sourceStamp();   // a new key, country, animation choice or installed streaming-app set refetches
@@ -851,12 +975,7 @@ final class Recs {
 
     private void save() {
         try {
-            JSONArray a = new JSONArray();
-            for (Pick p : picks) {
-                a.put(new JSONObject().put("id", p.id).put("kind", p.kind).put("title", p.title).put("backdrop", p.backdrop).put("link", p.link == null ? "" : p.link)
-                        .put("meta", p.meta).put("app", p.app == null ? "" : p.app).put("pkg", p.pkg == null ? "" : p.pkg)
-                        .put("detailed", p.detailed));
-            }
+            JSONArray a = toJson(picks);
             SharedPreferences.Editor e = cache.edit().putString("picks", a.toString()).putInt("period", period).putLong("listAt", listAt)
                     .putString("language", listLanguage)
                     .putLong("keyStamp", keyStamp).putInt("version", CACHE_VERSION);
@@ -867,6 +986,16 @@ final class Recs {
             e.apply();
         } catch (Exception ignored) {
         }
+    }
+
+    private static JSONArray toJson(List<Pick> list) throws org.json.JSONException {
+        JSONArray a = new JSONArray();
+        for (Pick p : list) {
+            a.put(new JSONObject().put("id", p.id).put("kind", p.kind).put("title", p.title).put("backdrop", p.backdrop).put("link", p.link == null ? "" : p.link)
+                    .put("meta", p.meta).put("app", p.app == null ? "" : p.app).put("pkg", p.pkg == null ? "" : p.pkg)
+                    .put("detailed", p.detailed).put("resumeAt", p.resumeAt));
+        }
+        return a;
     }
 
     private static List<Pick> parse(JSONArray a) {
@@ -884,6 +1013,7 @@ final class Recs {
             p.app = o.optString("app").isEmpty() ? null : o.optString("app");
             p.pkg = o.optString("pkg").isEmpty() ? null : o.optString("pkg");
             p.detailed = o.optBoolean("detailed");
+            p.resumeAt = o.optLong("resumeAt");
             out.add(p);
         }
         return out;
