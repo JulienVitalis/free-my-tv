@@ -52,7 +52,8 @@ final class Recs {
         String link;            // opens the title in its app (looked up with Watchmode), or null: the app's home
         boolean detailed;
         long resumeAt;          // a title you were watching ("Continue watching"): when, else 0
-        java.io.File photo;     // one of your own photos (Photos): no title, no caption
+        java.io.File photo;     // one of your own photos (Photos): no title, no caption; or a painting's (art)
+        boolean art;            // a painting (Paintings): its title, painter and year as the caption
     }
 
     interface Listener { void onRecs(); }
