@@ -1,0 +1,47 @@
+# Builds the APK for the Philips TV with config.philips.properties and publishes it as the release "philips".
+# The TMDB key (for the "For you" picks) comes from the repository secret TMDB_KEY, so it never shows in the code.
+# The signing key comes from the optional secret SIGNING_KEYSTORE (the keystore in base64): with it, every new APK
+# installs over the last one. Without it, build.sh makes a new key each run, and an update needs an uninstall first.
+name: Philips build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: philips-build
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK (build-tools 34, android-34)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" \
+            "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - name: Settings and signing key
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+        run: |
+          cp config.philips.properties config.properties
+          [ -n "$TMDB_KEY" ] && printf '\ntmdb_key=%s\n' "$TMDB_KEY" >> config.properties || echo "No TMDB_KEY secret: no picks"
+          [ -n "$SIGNING_KEYSTORE" ] && printf '%s' "$SIGNING_KEYSTORE" | base64 -d > freemytv.keystore || echo "No SIGNING_KEYSTORE secret: a new key"
+      - run: ./build.sh
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete philips --yes --cleanup-tag 2>/dev/null || true
+          gh release create philips FreeMyTV.apk --title "Free My TV (Philips)" \
+            --notes "Built from ${GITHUB_SHA::7}. Install: adb install -r FreeMyTV.apk"
