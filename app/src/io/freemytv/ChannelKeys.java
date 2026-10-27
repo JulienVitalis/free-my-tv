@@ -75,7 +75,7 @@ final class ChannelKeys {
         if (digit < 0) return false;
         // Not known yet (no window has changed since the service started): taken too, live TV gets the digits anyway.
         String front = foreground;
-        if (LIVE_TV.contains(front) || LEFT_ALONE.contains(front) || front.equals(liveTvPkg(c))) return false;
+        if (LIVE_TV.contains(front) || LEFT_ALONE.contains(front) || (!front.isEmpty() && front.equals(liveTvPkg(c)))) return false;
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
             synchronized (digits) {
                 if (digits.length() < 4) digits.append((char) ('0' + digit));
