@@ -807,8 +807,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             }
         } finally {
             s.caption.endRecording();
+            s.caption.setPosition(0, 0, w, h);   // here: the paintings' caption returns early
         }
-        s.caption.setPosition(0, 0, w, h);
     }
 
     /** The title whose caption shows, if it has an app on the TV; null for your photos and the clock. */
