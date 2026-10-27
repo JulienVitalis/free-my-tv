@@ -57,8 +57,8 @@ final class RemoteKeys {
     }
 
     /** The key filter is needed for the app buttons above, or for the channel digits on Philips (ChannelKeys). */
-    static boolean serviceNeeded() {
-        return supported() || ChannelKeys.PHILIPS;
+    static boolean serviceNeeded(Context c) {
+        return supported() || ChannelKeys.philips(c);
     }
 
     private static boolean is(String maker) {

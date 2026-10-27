@@ -257,11 +257,11 @@ final class HomeMode {
      * boot check and an update turn it back on.
      */
     static void ensureRemoteService(Context c, long delayMs) {
-        if (RemoteKeys.serviceNeeded()) ModeJob.schedule(c, ModeJob.REMOTE, null, delayMs);
+        if (RemoteKeys.serviceNeeded(c)) ModeJob.schedule(c, ModeJob.REMOTE, null, delayMs);
     }
 
     static void ensureRemoteServiceNow(Context app) {
-        if (!RemoteKeys.serviceNeeded() || !FREE.equals(state(app).optString("mode"))) return;
+        if (!RemoteKeys.serviceNeeded(app) || !FREE.equals(state(app).optString("mode"))) return;
         try (Adb adb = Adb.connect(app, 10_000, null)) {
             remoteService(app, adb, true);
         } catch (IOException e) {
@@ -469,7 +469,7 @@ final class HomeMode {
             s.put("mode", FREE).put("since", System.currentTimeMillis()).put("homeReverted", false)
                     .put("disabled", new JSONArray(sorted(disabled))).put("setupHome", setupHome);
             save(c, s);
-            if (RemoteKeys.serviceNeeded()) {
+            if (RemoteKeys.serviceNeeded(c)) {
                 try {
                     remoteService(c, adb, true);
                 } catch (IOException e) {
